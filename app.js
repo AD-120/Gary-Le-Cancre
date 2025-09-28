@@ -21,12 +21,15 @@ const FRENCH_TEXT = [
 
 let mode = 1
 let currentLine = 0
+let currentGroup = 0
 let hidden = new Set()
 let audioPlayer = null
+let speechRate = 0.9 // ברירת מחדל: מהיר
 
 function setMode(m) {
   mode = m
   currentLine = 0
+  currentGroup = 0
   render()
   updateActiveButton()
 }
@@ -35,17 +38,18 @@ function updateActiveButton() {
   document.getElementById('btn-mode-1').classList.toggle('active', mode === 1)
   document.getElementById('btn-mode-2').classList.toggle('active', mode === 2)
   document.getElementById('btn-mode-3').classList.toggle('active', mode === 3)
+  document.getElementById('btn-mode-4').classList.toggle('active', mode === 4)
 }
 
 function speak(text) {
   speechSynthesis.cancel()
   const u = new SpeechSynthesisUtterance(text)
   u.lang = 'fr-FR'
-  u.rate = 0.9
+  u.rate = speechRate
   speechSynthesis.speak(u)
 }
 
-// פונקציית מרחק לֶוֶנְשְטַיְן
+// --- פונקציות עזר לזיהוי ---
 function levenshtein(a, b) {
   const matrix = Array.from({ length: a.length + 1 }, () => [])
   for (let i = 0; i <= a.length; i++) matrix[i][0] = i
@@ -64,10 +68,9 @@ function levenshtein(a, b) {
   return matrix[a.length][b.length]
 }
 
-// תרגול קולי
 function practiceLine(line, container) {
   if (!('webkitSpeechRecognition' in window)) {
-    alert("הדפדפן שלך לא תומך בזיהוי דיבור (SpeechRecognition). נסה ב-Chrome.")
+    alert("הדפדפן לא תומך בזיהוי דיבור. נסה ב-Chrome.")
     return
   }
 
@@ -116,12 +119,80 @@ function practiceLine(line, container) {
   recognition.start()
 }
 
-// ציור הממשק
+function practiceGroup(lines, container) {
+  if (!('webkitSpeechRecognition' in window)) {
+    alert("הדפדפן לא תומך בזיהוי דיבור. נסה ב-Chrome.")
+    return
+  }
+
+  const recognition = new webkitSpeechRecognition()
+  recognition.lang = 'fr-FR'
+  recognition.interimResults = false
+  recognition.maxAlternatives = 1
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript
+
+    let resultSpan = container.querySelector('.result')
+    if (!resultSpan) {
+      resultSpan = document.createElement('div')
+      resultSpan.className = 'result'
+      container.appendChild(resultSpan)
+    }
+
+    const ref = lines.join(" ").toLowerCase().trim()
+    const said = transcript.toLowerCase().trim()
+
+    const dist = levenshtein(ref, said)
+    const maxLen = Math.max(ref.length, said.length)
+    const similarity = 1 - dist / maxLen
+
+    if (similarity >= 0.6) {
+      resultSpan.textContent = "✔️ זכרת נכון את ארבע השורות!"
+      resultSpan.style.color = "green"
+    } else {
+      resultSpan.textContent = `❌ זוהה: "${transcript}"`
+      resultSpan.style.color = "red"
+    }
+  }
+
+  recognition.onerror = () => {
+    let resultSpan = container.querySelector('.result')
+    if (!resultSpan) {
+      resultSpan = document.createElement('div')
+      resultSpan.className = 'result'
+      container.appendChild(resultSpan)
+    }
+    resultSpan.textContent = "⚠️ שגיאה בזיהוי דיבור"
+    resultSpan.style.color = "orange"
+  }
+
+  recognition.start()
+}
+
+// --- ציור הממשק ---
 function render() {
   const main = document.getElementById('main')
   main.innerHTML = ''
 
-  // מצב 1: טקסט מלא
+  // בקרת מהירות
+  const speedControls = document.createElement('div')
+  speedControls.className = 'nav-line'
+  const slowBtn = document.createElement('button')
+  slowBtn.textContent = "איטי"
+  slowBtn.onclick = () => { speechRate = 0.5 }
+  speedControls.appendChild(slowBtn)
+  const normalBtn = document.createElement('button')
+  normalBtn.textContent = "רגיל"
+  normalBtn.onclick = () => { speechRate = 0.7 }
+  speedControls.appendChild(normalBtn)
+  const fastBtn = document.createElement('button')
+  fastBtn.textContent = "מהיר"
+  fastBtn.onclick = () => { speechRate = 0.9 }
+  speedControls.appendChild(fastBtn)
+  main.appendChild(speedControls)
+
+  // מצב 1 – טקסט מלא
   if (mode === 1) {
     const controls = document.createElement('div')
     controls.style.marginBottom = '20px'
@@ -158,7 +229,7 @@ function render() {
     })
   }
 
-  // מצב 2: שורה אחר שורה
+  // מצב 2 – שורה אחר שורה
   if (mode === 2) {
     const nav = document.createElement('div')
     nav.className = 'nav-line'
@@ -194,7 +265,7 @@ function render() {
     main.appendChild(practiceBtn)
   }
 
-  // מצב 3: הצג/הסתר
+  // מצב 3 – הצג/הסתר
   if (mode === 3) {
     const controls = document.createElement('div')
     controls.className = 'nav-line'
@@ -235,7 +306,7 @@ function render() {
       div.appendChild(playBtn)
 
       const practiceBtn = document.createElement('button')
-      practiceBtn.textContent = "💬"
+      practiceBtn.textContent = "🎙️"
       practiceBtn.disabled = hidden.has(i)
       practiceBtn.onclick = () => practiceLine(line, div)
       div.appendChild(practiceBtn)
@@ -247,8 +318,50 @@ function render() {
       main.appendChild(div)
     })
   }
+
+  // מצב 4 – ארבע שורות
+  if (mode === 4) {
+    const nav = document.createElement('div')
+    nav.className = 'nav-line'
+
+    const back = document.createElement('button')
+    back.textContent = "⬅️"
+    back.onclick = () => { if (currentGroup > 0) { currentGroup--; render() } }
+    nav.appendChild(back)
+
+    const span = document.createElement('span')
+    const totalGroups = Math.ceil(FRENCH_TEXT.length / 4)
+    span.textContent = `${currentGroup + 1} / ${totalGroups}`
+    nav.appendChild(span)
+
+    const next = document.createElement('button')
+    next.textContent = "➡️"
+    next.onclick = () => { if (currentGroup < totalGroups - 1) { currentGroup++; render() } }
+    nav.appendChild(next)
+
+    main.appendChild(nav)
+
+    const start = currentGroup * 4
+    const lines = FRENCH_TEXT.slice(start, start + 4)
+
+    lines.forEach(line => {
+      const firstWord = line.split(" ")[0]
+      const hiddenPart = "──────"
+      const p = document.createElement('p')
+      p.textContent = firstWord + " " + hiddenPart
+      main.appendChild(p)
+    })
+
+    const practiceBtn = document.createElement('button')
+    practiceBtn.textContent = "💬 תרגל 4 שורות"
+    practiceBtn.onclick = () => practiceGroup(lines, main)
+    main.appendChild(practiceBtn)
+
+    const result = document.createElement('div')
+    result.className = 'result'
+    main.appendChild(result)
+  }
 }
 
-// הפעלה ראשונית
 updateActiveButton()
 render()
