@@ -45,9 +45,27 @@ function speak(text) {
   speechSynthesis.speak(u)
 }
 
-function practiceLine(line, container) {
-  speak(line)
+// פונקציית מרחק לֶוֶנְשְטַיְן
+function levenshtein(a, b) {
+  const matrix = Array.from({ length: a.length + 1 }, () => [])
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i
+  for (let j = 0; j <= b.length; j++) matrix[0][j] = j
 
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      )
+    }
+  }
+  return matrix[a.length][b.length]
+}
+
+// תרגול קולי
+function practiceLine(line, container) {
   if (!('webkitSpeechRecognition' in window)) {
     alert("הדפדפן שלך לא תומך בזיהוי דיבור (SpeechRecognition). נסה ב-Chrome.")
     return
@@ -60,7 +78,6 @@ function practiceLine(line, container) {
 
   recognition.onresult = (event) => {
     const transcript = event.results[0][0].transcript
-    console.log("שמעתי:", transcript)
 
     let resultSpan = container.querySelector('.result')
     if (!resultSpan) {
@@ -69,7 +86,14 @@ function practiceLine(line, container) {
       container.appendChild(resultSpan)
     }
 
-    if (transcript.toLowerCase().trim() === line.toLowerCase().trim()) {
+    const ref = line.toLowerCase().trim()
+    const said = transcript.toLowerCase().trim()
+
+    const dist = levenshtein(ref, said)
+    const maxLen = Math.max(ref.length, said.length)
+    const similarity = 1 - dist / maxLen
+
+    if (similarity >= 0.6) {
       resultSpan.textContent = "✔️ נכון!"
       resultSpan.style.color = "green"
     } else {
@@ -78,8 +102,7 @@ function practiceLine(line, container) {
     }
   }
 
-  recognition.onerror = (e) => {
-    console.error("שגיאה בזיהוי:", e)
+  recognition.onerror = () => {
     let resultSpan = container.querySelector('.result')
     if (!resultSpan) {
       resultSpan = document.createElement('div')
@@ -93,10 +116,12 @@ function practiceLine(line, container) {
   recognition.start()
 }
 
+// ציור הממשק
 function render() {
   const main = document.getElementById('main')
   main.innerHTML = ''
 
+  // מצב 1: טקסט מלא
   if (mode === 1) {
     const controls = document.createElement('div')
     controls.style.marginBottom = '20px'
@@ -133,6 +158,7 @@ function render() {
     })
   }
 
+  // מצב 2: שורה אחר שורה
   if (mode === 2) {
     const nav = document.createElement('div')
     nav.className = 'nav-line'
@@ -168,6 +194,7 @@ function render() {
     main.appendChild(practiceBtn)
   }
 
+  // מצב 3: הצג/הסתר
   if (mode === 3) {
     const controls = document.createElement('div')
     controls.className = 'nav-line'
@@ -208,7 +235,7 @@ function render() {
       div.appendChild(playBtn)
 
       const practiceBtn = document.createElement('button')
-      practiceBtn.textContent = "🎙️"
+      practiceBtn.textContent = "💬"
       practiceBtn.disabled = hidden.has(i)
       practiceBtn.onclick = () => practiceLine(line, div)
       div.appendChild(practiceBtn)
@@ -222,5 +249,6 @@ function render() {
   }
 }
 
+// הפעלה ראשונית
 updateActiveButton()
 render()
